@@ -1,9 +1,10 @@
-import { CreateOrderDTO } from '../dto/create-order.dto';
-import { Order } from '../../domain/entities/order';
-import { OrderRepository } from '../ports/order-repository';
-import { EventBus } from '../ports/event-bus';
-import { Result } from '../../shared/result';
-import { ValidationError, ConflictError } from '../errors';
+import { Order } from '../../domain/entities/order.js'
+import { SKU } from '../../domain/value-objects/sku.js'
+import { Result, ok, fail } from '../../shared/result.js'
+import { OrderRepository } from '../ports/order-repository.js'
+import { EventBus } from '../ports/event-bus.js'
+import { CreateOrderDto } from '../dto/create-order-dto.js'
+import { AppError, ValidationError, ConflictError } from '../errors.js'
 
 export class CreateOrder {
   constructor(
@@ -11,22 +12,37 @@ export class CreateOrder {
     private readonly eventBus: EventBus
   ) {}
 
-  async execute(dto: CreateOrderDTO): Promise<Result<void, ValidationError | ConflictError>> {
-    if (!dto.id || !dto.currency || !dto.items) {
-      return Result.fail(new ValidationError('Invalid order data.'));
+  async execute(dto: CreateOrderDto): Promise<Result<void, AppError>> {
+    try {
+      const orderSku = new SKU(dto.orderSku)
+      
+      const existingOrderResult = await this.orderRepository.findById(orderSku)
+      if (existingOrderResult.success) {
+        return fail(new ConflictError(`Order with SKU '${dto.orderSku}' already exists`))
+      }
+      
+      if (existingOrderResult.error.type !== 'NOT_FOUND_ERROR') {
+        return fail(existingOrderResult.error)
+      }
+
+      const order = new Order(orderSku)
+      
+      const saveResult = await this.orderRepository.save(order)
+      if (!saveResult.success) {
+        return fail(saveResult.error)
+      }
+
+      const publishResult = await this.eventBus.publish(order.events)
+      if (!publishResult.success) {
+        return fail(publishResult.error)
+      }
+
+      return ok(undefined)
+    } catch (error) {
+      if (error instanceof Error) {
+        return fail(new ValidationError(error.message))
+      }
+      return fail(new ValidationError('Unknown validation error'))
     }
-
-    const existingOrder = await this.orderRepository.findById(dto.id);
-    if (existingOrder) {
-      return Result.fail(new ConflictError('Order already exists.'));
-    }
-
-    const order = new Order(dto.id, dto.currency);
-    dto.items.forEach(item => order.addItem(item));
-
-    await this.orderRepository.save(order);
-    await this.eventBus.publish({ occurredOn: new Date(), orderId: dto.id });
-
-    return Result.ok();
   }
 }

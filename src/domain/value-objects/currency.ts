@@ -1,18 +1,19 @@
 export class Currency {
-  private readonly code: string;
+  private static readonly VALID_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'MXN']
+  private readonly _code: string
 
   constructor(code: string) {
-    if (!code || code.length !== 3 || !/^[A-Z]{3}$/.test(code)) {
-      throw new Error('Invalid Currency: Must be a 3-letter uppercase code.');
+    if (!code || !Currency.VALID_CURRENCIES.includes(code.toUpperCase())) {
+      throw new Error(`Invalid currency code: ${code}. Valid currencies: ${Currency.VALID_CURRENCIES.join(', ')}`)
     }
-    this.code = code;
+    this._code = code.toUpperCase()
   }
 
-  getCode(): string {
-    return this.code;
+  get code(): string {
+    return this._code
   }
 
   equals(other: Currency): boolean {
-    return this.code === other.getCode();
+    return this._code === other._code
   }
 }

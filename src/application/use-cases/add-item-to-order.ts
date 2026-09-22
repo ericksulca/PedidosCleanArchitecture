@@ -1,10 +1,11 @@
-import { AddItemToOrderDTO } from '../dto/add-item-to-order.dto';
-import { OrderRepository } from '../ports/order-repository';
-import { PricingService } from '../ports/pricing-service';
-import { EventBus } from '../ports/event-bus';
-import { Result } from '../../shared/result';
-import { NotFoundError, ValidationError } from '../errors';
-import { OrderItem } from '../../domain/value-objects/order-item';
+import { SKU } from '../../domain/value-objects/sku.js'
+import { Quantity } from '../../domain/value-objects/quantity.js'
+import { Result, ok, fail } from '../../shared/result.js'
+import { OrderRepository } from '../ports/order-repository.js'
+import { PricingService } from '../ports/pricing-service.js'
+import { EventBus } from '../ports/event-bus.js'
+import { AddItemToOrderDto } from '../dto/add-item-to-order-dto.js'
+import { AppError, ValidationError } from '../errors.js'
 
 export class AddItemToOrder {
   constructor(
@@ -13,23 +14,44 @@ export class AddItemToOrder {
     private readonly eventBus: EventBus
   ) {}
 
-  async execute(dto: AddItemToOrderDTO): Promise<Result<void, NotFoundError | ValidationError>> {
-    if (!dto.orderId || !dto.sku || !dto.quantity) {
-      return Result.fail(new ValidationError('Invalid item data.'));
+  async execute(dto: AddItemToOrderDto): Promise<Result<void, AppError>> {
+    try {
+      const orderSku = new SKU(dto.orderSku)
+      const productSku = new SKU(dto.productSku)
+      const quantity = new Quantity(dto.quantity)
+
+      const orderResult = await this.orderRepository.findById(orderSku)
+      if (!orderResult.success) {
+        return fail(orderResult.error)
+      }
+      
+      const order = orderResult.data
+      
+      const priceResult = await this.pricingService.getPrice(productSku)
+      if (!priceResult.success) {
+        return fail(priceResult.error)
+      }
+      
+      const unitPrice = priceResult.data
+
+      order.addItem(productSku, quantity, unitPrice)
+      
+      const saveResult = await this.orderRepository.save(order)
+      if (!saveResult.success) {
+        return fail(saveResult.error)
+      }
+
+      const publishResult = await this.eventBus.publish(order.events)
+      if (!publishResult.success) {
+        return fail(publishResult.error)
+      }
+
+      return ok(undefined)
+    } catch (error) {
+      if (error instanceof Error) {
+        return fail(new ValidationError(error.message))
+      }
+      return fail(new ValidationError('Unknown validation error'))
     }
-
-    const order = await this.orderRepository.findById(dto.orderId);
-    if (!order) {
-      return Result.fail(new NotFoundError('Order not found.'));
-    }
-
-    const price = await this.pricingService.getPrice(dto.sku);
-    const item = new OrderItem(dto.sku, dto.quantity, price);
-
-    order.addItem(item);
-    await this.orderRepository.save(order);
-    await this.eventBus.publish({ occurredOn: new Date(), orderId: dto.orderId, sku: dto.sku.getValue(), quantity: dto.quantity.getValue() });
-
-    return Result.ok();
   }
 }

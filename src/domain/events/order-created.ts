@@ -1,11 +1,7 @@
-import { DomainEvent } from './domain-event';
+import { DomainEvent } from './domain-event.js'
 
-export class OrderCreatedEvent implements DomainEvent {
-  public readonly occurredOn: Date;
-  public readonly orderId: string;
-
-  constructor(orderId: string) {
-    this.occurredOn = new Date();
-    this.orderId = orderId;
+export class OrderCreated extends DomainEvent {
+  constructor(orderSku: string) {
+    super(orderSku)
   }
 }

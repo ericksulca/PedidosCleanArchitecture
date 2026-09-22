@@ -1,15 +1,22 @@
-import { DomainEvent } from './domain-event';
+import { DomainEvent } from './domain-event.js'
 
-export class ItemAddedToOrderEvent implements DomainEvent {
-  public readonly occurredOn: Date;
-  public readonly orderId: string;
-  public readonly sku: string;
-  public readonly quantity: number;
+export class ItemAddedToOrder extends DomainEvent {
+  readonly productSku: string
+  readonly quantity: number
+  readonly unitPrice: number
+  readonly currency: string
 
-  constructor(orderId: string, sku: string, quantity: number) {
-    this.occurredOn = new Date();
-    this.orderId = orderId;
-    this.sku = sku;
-    this.quantity = quantity;
+  constructor(
+    orderSku: string,
+    productSku: string,
+    quantity: number,
+    unitPrice: number,
+    currency: string
+  ) {
+    super(orderSku)
+    this.productSku = productSku
+    this.quantity = quantity
+    this.unitPrice = unitPrice
+    this.currency = currency
   }
 }

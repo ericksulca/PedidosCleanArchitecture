@@ -1,38 +1,75 @@
-import { OrderItem } from '../value-objects/order-item';
-import { Money } from '../value-objects/money';
-import { Currency } from '../value-objects/currency';
-import { DomainEvent } from '../events/domain-event';
+import { SKU } from '../value-objects/sku.js'
+import { OrderItem } from '../value-objects/order-item.js'
+import { Money } from '../value-objects/money.js'
+import { Quantity } from '../value-objects/quantity.js'
+import { DomainEvent } from '../events/domain-event.js'
+import { OrderCreated } from '../events/order-created.js'
+import { ItemAddedToOrder } from '../events/item-added-to-order.js'
 
 export class Order {
-  private readonly id: string;
-  private readonly items: OrderItem[] = [];
-  private readonly currency: Currency;
+  private readonly _sku: SKU
+  private readonly _items: Map<string, OrderItem> = new Map()
+  private readonly _events: DomainEvent[] = []
 
-  constructor(id: string, currency: Currency) {
-    if (!id) {
-      throw new Error('Order must have a valid ID.');
+  constructor(sku: SKU) {
+    this._sku = sku
+    this._events.push(new OrderCreated(sku.value))
+  }
+
+  get sku(): SKU {
+    return this._sku
+  }
+
+  get items(): OrderItem[] {
+    return Array.from(this._items.values())
+  }
+
+  get events(): DomainEvent[] {
+    return [...this._events]
+  }
+
+  addItem(productSku: SKU, quantity: Quantity, unitPrice: Money): void {
+    const existingItem = this._items.get(productSku.value)
+    
+    if (existingItem) {
+      if (!existingItem.unitPrice.equals(unitPrice)) {
+        throw new Error('Cannot add item with different unit price')
+      }
+      const updatedItem = existingItem.increaseQuantity(quantity)
+      this._items.set(productSku.value, updatedItem)
+    } else {
+      const newItem = new OrderItem(productSku, quantity, unitPrice)
+      this._items.set(productSku.value, newItem)
     }
-    this.id = id;
-    this.currency = currency;
+
+    this._events.push(new ItemAddedToOrder(
+      this._sku.value,
+      productSku.value,
+      quantity.value,
+      unitPrice.amount,
+      unitPrice.currency.code
+    ))
   }
 
-  addItem(item: OrderItem): void {
-    if (!item.price.getCurrency().equals(this.currency)) {
-      throw new Error('Item currency must match order currency.');
+  getTotalByCurrency(): Map<string, Money> {
+    const totals = new Map<string, Money>()
+
+    for (const item of this._items.values()) {
+      const currencyCode = item.unitPrice.currency.code
+      const itemTotal = item.totalPrice
+      
+      if (totals.has(currencyCode)) {
+        const currentTotal = totals.get(currencyCode)!
+        totals.set(currencyCode, currentTotal.add(itemTotal))
+      } else {
+        totals.set(currencyCode, itemTotal)
+      }
     }
-    this.items.push(item);
+
+    return totals
   }
 
-  getTotal(): Money {
-    const totalAmount = this.items.reduce((sum, item) => sum + item.getTotal().getAmount(), 0);
-    return new Money(totalAmount, this.currency);
-  }
-
-  getId(): string {
-    return this.id;
-  }
-
-  getItems(): OrderItem[] {
-    return this.items;
+  clearEvents(): void {
+    this._events.length = 0
   }
 }

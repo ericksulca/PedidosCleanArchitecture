@@ -1,35 +1,26 @@
-import fastify from 'fastify';
-import { OrdersController } from './controllers/OrdersController';
-import { InMemoryOrderRepository } from '../persistence/in-memory/InMemoryOrderRepository';
-import { StaticPricingService } from './StaticPricingService';
-import { NoopEventBus } from '../messaging/NoopEventBus';
-import { CreateOrder } from '../../application/use-cases/create-order';
-import { AddItemToOrder } from '../../application/use-cases/add-item-to-order';
+import fastify from 'fastify'
+import { ServerDependencies } from '../../application/ports/server-dependencies.js'
+import { OrderController } from './controllers/order-controller.js'
 
-const app = fastify();
+export async function buildServer(dependencies: ServerDependencies) {
+  const server = fastify({ 
+    logger: true 
+  })
 
-// Instantiate dependencies
-const orderRepository = new InMemoryOrderRepository();
-const pricingService = new StaticPricingService();
-const eventBus = new NoopEventBus();
+  // Presentation layer (Controllers)
+  const orderController = new OrderController(
+    dependencies.createOrderUseCase,
+    dependencies.addItemToOrderUseCase
+  )
 
-const createOrderUseCase = new CreateOrder(orderRepository, eventBus);
-const addItemToOrderUseCase = new AddItemToOrder(orderRepository, pricingService, eventBus);
+  // Register routes
+  await orderController.registerRoutes(server)
 
-const ordersController = new OrdersController(createOrderUseCase, addItemToOrderUseCase);
+  // Health check endpoint
+  server.get('/health', async () => {
+    return { status: 'ok', timestamp: new Date().toISOString() }
+  })
 
-// Register routes
-ordersController.registerRoutes(app);
+  return server
+}
 
-// Start the server
-const startServer = async () => {
-  try {
-    await app.listen({ port: 3000 });
-    console.log('Server is running on http://localhost:3000');
-  } catch (err) {
-    app.log.error(err);
-    process.exit(1);
-  }
-};
-
-startServer();

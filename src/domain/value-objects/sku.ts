@@ -1,14 +1,21 @@
 export class SKU {
-  private readonly value: string;
+  private readonly _value: string
 
   constructor(value: string) {
-    if (!value || !/^[A-Z0-9]{3}$/.test(value)) {
-      throw new Error('Invalid SKU: Must be 3 alphanumeric uppercase characters.');
+    if (!value || value.trim().length === 0) {
+      throw new Error('SKU cannot be empty')
     }
-    this.value = value;
+    if (value.trim().length < 3) {
+      throw new Error('SKU must be at least 3 characters long')
+    }
+    this._value = value.trim().toUpperCase()
   }
 
-  getValue(): string {
-    return this.value;
+  get value(): string {
+    return this._value
+  }
+
+  equals(other: SKU): boolean {
+    return this._value === other._value
   }
 }
